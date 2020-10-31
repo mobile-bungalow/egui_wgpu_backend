@@ -8,7 +8,7 @@
 Backend code to run egui using wgpu.
 
 ## Example
-You can run the example window included in this repo by invoking
+You can run the example included in this repo by invoking...
 ```bash
 cargo run --example demo
 ```
