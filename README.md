@@ -8,7 +8,10 @@
 Backend code to run egui using wgpu.
 
 ## Example
-We have created [a simple example](https://github.com/hasenbanck/egui_example) project to show you, how to use this crate.
+You can run the example window included in this repo by invoking
+```bash
+cargo run --example demo
+```
 
 ## License
 egui_wgpu_backend is distributed under the terms of both the MIT license and the Apache License (Version 2.0).
