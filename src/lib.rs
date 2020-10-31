@@ -5,11 +5,10 @@
 #![warn(missing_docs)]
 
 use bytemuck::{Pod, Zeroable};
-use vk_shader_macros::include_glsl;
-use wgpu::util::{BufferInitDescriptor, DeviceExt};
-
-const EGUI_VERTEX_SHADER: &[u32] = include_glsl!("src/shader/egui.vert");
-const EGUI_FRAGMENT_SHADER: &[u32] = include_glsl!("src/shader/egui.frag");
+use wgpu::{
+    include_spirv,
+    util::{BufferInitDescriptor, DeviceExt},
+};
 
 /// Enum for selecting the right buffer type.
 #[derive(Debug)]
@@ -72,45 +71,53 @@ pub struct RenderPass {
 impl RenderPass {
     /// Creates a new render pass to render a egui UI. `output_format` needs to be either `wgpu::TextureFormat::Rgba8UnormSrgb` or `wgpu::TextureFormat::Bgra8UnormSrgb`. Panics if it's not a Srgb format.
     pub fn new(device: &wgpu::Device, output_format: wgpu::TextureFormat) -> Self {
-        if !(output_format == wgpu::TextureFormat::Rgba8UnormSrgb || output_format == wgpu::TextureFormat::Bgra8UnormSrgb) {
+        if !(output_format == wgpu::TextureFormat::Rgba8UnormSrgb
+            || output_format == wgpu::TextureFormat::Bgra8UnormSrgb)
+        {
             panic!("Incompatible output_format. Needs to be either Rgba8UnormSrgb or Bgra8UnormSrgb: {:?}", output_format);
         }
 
-        let vs_module = device.create_shader_module(wgpu::util::make_spirv(bytemuck::cast_slice(&EGUI_VERTEX_SHADER)));
-        let fs_module = device.create_shader_module(wgpu::util::make_spirv(bytemuck::cast_slice(&EGUI_FRAGMENT_SHADER)));
+        let vs_module = device.create_shader_module(include_spirv!("shader/vert.spv"));
+        let fs_module = device.create_shader_module(include_spirv!("shader/frag.spv"));
 
         let uniform_buffer = device.create_buffer_init(&BufferInitDescriptor {
             label: Some("egui_uniform_buffer"),
-            contents: bytemuck::cast_slice(&[UniformBuffer { screen_size: [0.0, 0.0] }]),
+            contents: bytemuck::cast_slice(&[UniformBuffer {
+                screen_size: [0.0, 0.0],
+            }]),
             usage: wgpu::BufferUsage::UNIFORM | wgpu::BufferUsage::COPY_DST,
         });
-        let uniform_buffer = SizedBuffer { buffer: uniform_buffer, size: std::mem::size_of::<UniformBuffer>() };
+        let uniform_buffer = SizedBuffer {
+            buffer: uniform_buffer,
+            size: std::mem::size_of::<UniformBuffer>(),
+        };
 
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
             label: Some("egui_texture_sampler"),
             ..Default::default()
         });
 
-        let uniform_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("egui_uniform_bind_group_layout"),
-            entries: &[
-                wgpu::BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: wgpu::ShaderStage::VERTEX,
-                    ty: wgpu::BindingType::UniformBuffer {
-                        dynamic: false,
-                        min_binding_size: None,
+        let uniform_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("egui_uniform_bind_group_layout"),
+                entries: &[
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: wgpu::ShaderStage::VERTEX,
+                        ty: wgpu::BindingType::UniformBuffer {
+                            dynamic: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
                     },
-                    count: None,
-                },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 1,
-                    visibility: wgpu::ShaderStage::FRAGMENT,
-                    ty: wgpu::BindingType::Sampler { comparison: false },
-                    count: None,
-                },
-            ],
-        });
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 1,
+                        visibility: wgpu::ShaderStage::FRAGMENT,
+                        ty: wgpu::BindingType::Sampler { comparison: false },
+                        count: None,
+                    },
+                ],
+            });
 
         let uniform_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("egui_uniform_bind_group"),
@@ -118,9 +125,7 @@ impl RenderPass {
             entries: &[
                 wgpu::BindGroupEntry {
                     binding: 0,
-                    resource: wgpu::BindingResource::Buffer(
-                        uniform_buffer.buffer.slice(..)
-                    ),
+                    resource: wgpu::BindingResource::Buffer(uniform_buffer.buffer.slice(..)),
                 },
                 wgpu::BindGroupEntry {
                     binding: 1,
@@ -129,10 +134,10 @@ impl RenderPass {
             ],
         });
 
-        let texture_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("egui_texture_bind_group_layout"),
-            entries: &[
-                wgpu::BindGroupLayoutEntry {
+        let texture_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("egui_texture_bind_group_layout"),
+                entries: &[wgpu::BindGroupLayoutEntry {
                     binding: 0,
                     visibility: wgpu::ShaderStage::FRAGMENT,
                     ty: wgpu::BindingType::SampledTexture {
@@ -141,9 +146,8 @@ impl RenderPass {
                         dimension: wgpu::TextureViewDimension::D2,
                     },
                     count: None,
-                }
-            ],
-        });
+                }],
+            });
 
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("egui_pipeline_layout"),
@@ -238,11 +242,7 @@ impl RenderPass {
         pass.push_debug_group("egui_pass");
         pass.set_pipeline(&self.render_pipeline);
 
-        pass.set_bind_group(
-            0,
-            &self.uniform_bind_group,
-            &[],
-        );
+        pass.set_bind_group(0, &self.uniform_bind_group, &[]);
 
         pass.set_bind_group(
             1,
@@ -281,12 +281,7 @@ impl RenderPass {
             let width = (clip_max_x - clip_min_x).max(1);
             let height = (clip_max_y - clip_min_y).max(1);
 
-            pass.set_scissor_rect(
-                clip_min_x,
-                clip_min_y,
-                width,
-                height,
-            );
+            pass.set_scissor_rect(clip_min_x, clip_min_y, width, height);
 
             pass.set_index_buffer(index_buffer.buffer.slice(..));
             pass.set_vertex_buffer(0, vertex_buffer.buffer.slice(..));
@@ -342,14 +337,12 @@ impl RenderPass {
         let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("egui_texture_bind_group"),
             layout: &self.texture_bind_group_layout,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: wgpu::BindingResource::TextureView(
-                        &texture.create_view(&wgpu::TextureViewDescriptor::default()),
-                    ),
-                }
-            ],
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: wgpu::BindingResource::TextureView(
+                    &texture.create_view(&wgpu::TextureViewDescriptor::default()),
+                ),
+            }],
         });
 
         self.texture_width = egui_texture.width as u32;
@@ -371,12 +364,14 @@ impl RenderPass {
 
         let (logical_width, logical_height) = screen_descriptor.logical_size();
 
-        self.update_buffer(device, queue, BufferType::Uniform, 0,
-                           bytemuck::cast_slice(
-                               &[UniformBuffer {
-                                   screen_size: [logical_width as f32, logical_height as f32]
-                               }]
-                           ),
+        self.update_buffer(
+            device,
+            queue,
+            BufferType::Uniform,
+            0,
+            bytemuck::cast_slice(&[UniformBuffer {
+                screen_size: [logical_width as f32, logical_height as f32],
+            }]),
         );
 
         for (i, (_, triangles)) in paint_jobs.iter().enumerate() {
@@ -433,12 +428,11 @@ impl RenderPass {
                 wgpu::BufferUsage::VERTEX,
                 "vertex",
             ),
-            BufferType::Uniform => {
-                (&mut self.uniform_buffer,
-                 wgpu::BufferUsage::UNIFORM,
-                 "uniform",
-                )
-            }
+            BufferType::Uniform => (
+                &mut self.uniform_buffer,
+                wgpu::BufferUsage::UNIFORM,
+                "uniform",
+            ),
         };
 
         if data.len() > buffer.size {
